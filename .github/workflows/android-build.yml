@@ -1,0 +1,79 @@
+# GitHub Actions workflow for building Opera libretro core for Android
+# This workflow builds the core for both armeabi-v7a and arm64-v8a architectures
+
+name: Android Build
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
+    # Allows manual trigger
+
+jobs:
+  build-android:
+    name: Build Android
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        abi: [armeabi-v7a, arm64-v8a]
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Set up NDK
+      uses: nttld/setup-ndk@v1
+      with:
+        ndk-version: r27
+        add-to-path: true
+        link-to-sdk: true
+
+    - name: Build with ndk-build
+      run: |
+        cd jni
+        ndk-build -j4 APP_ABI=${{ matrix.abi }} APP_PLATFORM=android-21
+
+    - name: Upload artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: opera_libretro-${{ matrix.abi }}
+        path: libs/${{ matrix.abi }}/opera_libretro.so
+        retention-days: 30
+
+  # Create a combined release with all architectures
+  release:
+    name: Create Release
+    runs-on: ubuntu-latest
+    needs: build-android
+    if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/')
+    
+    steps:
+    - name: Download arm64-v8a artifact
+      uses: actions/download-artifact@v4
+      with:
+        name: opera_libretro-arm64-v8a
+        path: arm64-v8a
+
+    - name: Download armeabi-v7a artifact
+      uses: actions/download-artifact@v4
+      with:
+        name: opera_libretro-armeabi-v7a
+        path: armeabi-v7a
+
+    - name: Create release archive
+      run: |
+        mkdir -p release/cores
+        cp arm64-v8a/opera_libretro.so release/cores/opera_libretro_android_arm64.so
+        cp armeabi-v7a/opera_libretro.so release/cores/opera_libretro_android_armv7.so
+        cp -r ../libs/*/opera_libretro.so release/ 2>/dev/null || true
+        cd release
+        zip -r ../opera_libretro_android.zip .
+
+    - name: Upload release artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: opera_libretro_android
+        path: opera_libretro_android.zip
+        retention-days: 30

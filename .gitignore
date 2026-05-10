@@ -1,0 +1,10 @@
+*.o
+*.so
+*.dll
+*.dylib
+*.exe
+/.project
+/obj/
+/libs/
+*.a
+.vscode/pro-deployer.json

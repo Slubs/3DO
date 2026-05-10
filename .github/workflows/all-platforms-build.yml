@@ -1,0 +1,190 @@
+# GitHub Actions workflow for building Opera libretro core for all platforms
+# Builds for Android, Windows, and Linux
+
+name: Multi-Platform Build
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
+    # Allows manual trigger from the Actions tab
+
+jobs:
+  # ===========================================================================
+  # ANDROID BUILDS
+  # ===========================================================================
+  build-android-arm64:
+    name: Android (ARM64)
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Set up NDK
+      uses: nttld/setup-ndk@v1
+      with:
+        ndk-version: r27
+        add-to-path: true
+
+    - name: Build with ndk-build
+      run: |
+        cd jni
+        ndk-build -j4 APP_ABI=arm64-v8a APP_PLATFORM=android-21
+
+    - name: Upload artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: opera_libretro_android_arm64
+        path: libs/arm64-v8a/opera_libretro.so
+        retention-days: 30
+
+  build-android-armv7:
+    name: Android (ARMv7)
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Set up NDK
+      uses: nttld/setup-ndk@v1
+      with:
+        ndk-version: r27
+        add-to-path: true
+
+    - name: Build with ndk-build
+      run: |
+        cd jni
+        ndk-build -j4 APP_ABI=armeabi-v7a APP_PLATFORM=android-21
+
+    - name: Upload artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: opera_libretro_android_armv7
+        path: libs/armeabi-v7a/opera_libretro.so
+        retention-days: 30
+
+  # ===========================================================================
+  # WINDOWS BUILD
+  # ===========================================================================
+  build-windows:
+    name: Windows (x64)
+    runs-on: windows-latest
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Set up MinGW
+      uses: msys2/setup-msys2@v2
+      with:
+        msystem: UCRT64
+        update: true
+        install: |
+          mingw-w64-ucrt-x86_64-gcc
+          mingw-w64-ucrt-x86_64-make
+          git
+
+    - name: Build with Makefile
+      shell: msys2 {0}
+      run: |
+        cd "$GITHUB_WORKSPACE"
+        make -f Makefile CC=gcc -j4
+
+    - name: Upload artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: opera_libretro_windows
+        path: opera_libretro.dll
+        retention-days: 30
+
+  # ===========================================================================
+  # LINUX BUILD
+  # ===========================================================================
+  build-linux:
+    name: Linux (x64)
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y gcc make
+
+    - name: Build with Makefile
+      run: |
+        make -f Makefile -j4
+
+    - name: Upload artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: opera_libretro_linux
+        path: opera_libretro.so
+        retention-days: 30
+
+  # ===========================================================================
+  # COMBINED RELEASE (for manual triggers)
+  # ===========================================================================
+  create-release:
+    name: Create Release Package
+    runs-on: ubuntu-latest
+    needs: [build-android-arm64, build-android-armv7, build-windows, build-linux]
+    if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/')
+    steps:
+    - name: Download Android ARM64
+      uses: actions/download-artifact@v4
+      with:
+        name: opera_libretro_android_arm64
+        path: release/android-arm64
+
+    - name: Download Android ARMv7
+      uses: actions/download-artifact@v4
+      with:
+        name: opera_libretro_android_armv7
+        path: release/android-armv7
+
+    - name: Download Windows
+      uses: actions/download-artifact@v4
+      with:
+        name: opera_libretro_windows
+        path: release/windows
+
+    - name: Download Linux
+      uses: actions/download-artifact@v4
+      with:
+        name: opera_libretro_linux
+        path: release/linux
+
+    - name: Create release archives
+      run: |
+        cd release
+        zip -r ../opera_libretro_android_arm64.zip android-arm64/
+        zip -r ../opera_libretro_android_armv7.zip android-armv7/
+        zip -r ../opera_libretro_windows.zip windows/
+        zip -r ../opera_libretro_linux.zip linux/
+
+    - name: Upload Android ARM64
+      uses: actions/upload-artifact@v4
+      with:
+        name: FINAL_opera_libretro_android_arm64
+        path: opera_libretro_android_arm64.zip
+
+    - name: Upload Android ARMv7
+      uses: actions/upload-artifact@v4
+      with:
+        name: FINAL_opera_libretro_android_armv7
+        path: opera_libretro_android_armv7.zip
+
+    - name: Upload Windows
+      uses: actions/upload-artifact@v4
+      with:
+        name: FINAL_opera_libretro_windows
+        path: opera_libretro_windows.zip
+
+    - name: Upload Linux
+      uses: actions/upload-artifact@v4
+      with:
+        name: FINAL_opera_libretro_linux
+        path: opera_libretro_linux.zip
