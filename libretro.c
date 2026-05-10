@@ -494,12 +494,18 @@ game_info_path_get(void)
   return g_GAME_INFO_PATH;
 }
 
-/* Disk control ext interface implementation */
-static size_t disk_get_num_images(void)
+/*
+ * Disk control ext interface implementation.
+ * Note: Function signatures must match retro_disk_control_ext_callback exactly.
+ */
+
+/* Returns number of images/disks */
+static unsigned disk_get_num_images(void)
 {
-  return retro_cdimage_get_num_discs(&CDIMAGE);
+  return (unsigned)retro_cdimage_get_num_discs(&CDIMAGE);
 }
 
+/* Set disk index, returns true on success */
 static bool disk_set_image_index(unsigned index)
 {
   cdimage_t *old_disc = retro_cdimage_get_current_cdimage(&CDIMAGE);
@@ -526,91 +532,121 @@ static bool disk_set_image_index(unsigned index)
   return true;
 }
 
+/* Get current disk index */
 static unsigned disk_get_image_index(void)
 {
   return (unsigned)retro_cdimage_get_disc_index(&CDIMAGE);
 }
 
-static const char* disk_get_image_path(unsigned index)
+/* Get disk path - writes to buffer, returns true on success */
+static bool disk_get_image_path(unsigned index, char *path, size_t len)
 {
-  return retro_cdimage_get_disc_path(&CDIMAGE, index);
-}
-
-static const char* disk_get_image_label(unsigned index)
-{
-  return retro_cdimage_get_disc_label(&CDIMAGE, index);
-}
-
-static bool disk_set_eject_state(bool ejected)
-{
-  /* Eject state is handled by the frontend, we just acknowledge it */
-  return true;
-}
-
-static bool disk_get_eject_state(void)
-{
-  /* We don't track eject state internally */
+  const char *disc_path = retro_cdimage_get_disc_path(&CDIMAGE, index);
+  if (disc_path && path && len > 0)
+  {
+    strncpy(path, disc_path, len - 1);
+    path[len - 1] = '\0';
+    return true;
+  }
   return false;
 }
 
-static bool disk_insert_image(const char *image_path, unsigned index)
+/* Get disk label - writes to buffer, returns true on success */
+static bool disk_get_image_label(unsigned index, char *label, size_t len)
 {
-  /* For now, we don't support hot-inserting new images */
+  const char *disc_label = retro_cdimage_get_disc_label(&CDIMAGE, index);
+  if (disc_label && label && len > 0)
+  {
+    strncpy(label, disc_label, len - 1);
+    label[len - 1] = '\0';
+    return true;
+  }
+  return false;
+}
+
+/* Set eject state - not implemented */
+static bool disk_set_eject_state(bool ejected)
+{
+  (void)ejected;
+  return true;
+}
+
+/* Get eject state - not implemented */
+static bool disk_get_eject_state(void)
+{
+  return false;
+}
+
+/* Set initial image - not implemented */
+static bool disk_set_initial_image(unsigned index, const char *path)
+{
+  (void)index;
+  (void)path;
+  return false;
+}
+
+/* Insert image - not implemented */
+static bool disk_insert_image(unsigned index, const struct retro_game_info *info)
+{
+  (void)index;
+  (void)info;
   retro_log_printf_cb(RETRO_LOG_WARN,
                       "[Opera]: Hot-inserting images is not supported\n");
   return false;
 }
 
-static bool disk_replace_image(const char *image_path, bool persistent)
+/* Replace image - not implemented */
+static bool disk_replace_image(unsigned index, const struct retro_game_info *info)
 {
-  /* For now, we don't support replacing images */
+  (void)index;
+  (void)info;
   retro_log_printf_cb(RETRO_LOG_WARN,
                       "[Opera]: Replacing images is not supported\n");
   return false;
 }
 
+/* Add image - not implemented */
 static bool disk_add_image(void)
 {
-  /* For now, we don't support adding images dynamically */
   retro_log_printf_cb(RETRO_LOG_WARN,
                       "[Opera]: Adding images dynamically is not supported\n");
   return false;
 }
 
+/* Remove image - not implemented */
 static bool disk_remove_image(void)
 {
-  /* For now, we don't support removing images dynamically */
   retro_log_printf_cb(RETRO_LOG_WARN,
                       "[Opera]: Removing images dynamically is not supported\n");
   return false;
 }
 
+/* Clear images - not implemented */
 static bool disk_clear_image(void)
 {
-  /* For now, we don't support clearing images */
   retro_log_printf_cb(RETRO_LOG_WARN,
                       "[Opera]: Clearing images is not supported\n");
   return false;
 }
 
 /*
- * Disk control ext interface implementation.
- * Note: Function order must match retro_disk_control_ext_callback structure.
+ * Disk control ext interface callback structure.
+ * Function order MUST match retro_disk_control_ext_callback structure exactly.
  */
 static struct retro_disk_control_ext_callback disk_control_cb = {
-  disk_set_eject_state,      /* set_eject_state */
-  disk_get_eject_state,      /* get_eject_state */
-  disk_get_num_images,       /* get_num_images */
-  disk_set_image_index,      /* set_image_index */
-  disk_get_image_index,      /* get_image_index */
-  disk_get_image_path,       /* get_image_path */
-  disk_get_image_label,      /* get_image_label */
-  NULL,                      /* set_initial_image - not implemented */
-  disk_insert_image,         /* insert_image */
-  disk_replace_image,        /* replace_image */
-  disk_add_image,            /* add_image */
-  disk_remove_image,         /* remove_image */
-  disk_clear_image           /* clear_image */
+  disk_set_eject_state,      /* set_eject_state - bool (*)(bool) */
+  disk_get_eject_state,      /* get_eject_state - bool (*)(void) */
+  disk_get_num_images,       /* get_num_images - unsigned (*)(void) */
+  disk_set_image_index,      /* set_image_index - bool (*)(unsigned) */
+  disk_get_image_index,      /* get_image_index - unsigned (*)(void) */
+  disk_get_image_path,       /* get_image_path - bool (*)(unsigned, char*, size_t) */
+  disk_get_image_label,      /* get_image_label - bool (*)(unsigned, char*, size_t) */
+  disk_set_initial_image,    /* set_initial_image - bool (*)(unsigned, const char*) */
+  disk_insert_image,         /* insert_image - bool (*)(unsigned, const struct retro_game_info*) */
+  disk_replace_image,        /* replace_image - bool (*)(unsigned, const struct retro_game_info*) */
+  disk_add_image,            /* add_image - bool (*)(void) */
+  disk_remove_image,         /* remove_image - bool (*)(void) */
+  disk_clear_image           /* clear_image - bool (*)(void) */
 };
 
 bool
